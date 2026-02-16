@@ -72,6 +72,7 @@ if pipeline_mode == "rescue":
             temp(expand(split_dir + "/{sample}.fasta", sample=SAMPLES))
         params:
             split_dir=split_dir
+        threads: 1
         shell:
             """
             bash code/split_multifasta.sh {input} {params.split_dir}
