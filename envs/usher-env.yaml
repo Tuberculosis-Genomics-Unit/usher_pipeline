@@ -1,10 +1,17 @@
 name: usher-env
+# prefix.dev mirrors of conda-forge and bioconda; conda.anaconda.org is unreachable from some of our servers.
 channels:
-  - conda-forge
-  - bioconda
-  - defaults
-channel_priority: flexible
+  - https://repo.prefix.dev/conda-forge
+  - https://repo.prefix.dev/bioconda
+  - nodefaults
+channel_priority: strict
 dependencies:
-  - python=3.10
+  - python=3.12
   - usher=0.6.2
   - boost-cpp=1.74.0
+  - r-base
+  - r-jsonlite
+  - r-stringr
+  - r-dplyr
+  - r-progress
+  - jq

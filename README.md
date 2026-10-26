@@ -1,182 +1,213 @@
-# Generación de filogenias con UShER a partir de .annoF (sin rescate) y multifasta (con rescate)
+# UShER phylogeny pipeline
 
-## Cómo ejecutar la pipeline
+Builds a phylogenetic tree with [UShER](https://github.com/yatisht/usher) from the multifasta and SNP table produced by [ThePipeline](https://github.com/Tuberculosis-Genomics-Unit/ThePipeline_v3). Optionally, it also writes a table with the mutations on every branch of the tree.
 
-> [!NOTE]  
-> Dataset de prueba disponible en `salas:/data/fcordero/usher_example/data/`
+Starting from `.annoF` files (no rescue mode) is not supported (deprecated, but can be added in the future).
 
-### 1. Instalación de `snakemake`
+<br>
 
-```shell
-# Instalación via conda
-conda create -c conda-forge -c bioconda -c nodefaults -n snakemake snakemake
-conda activate snakemake
+## Repository contents
 
-# Instalación via pip
-pip install snakemake
 ```
-
-### 2. Establecer ajustes
-
-Establecer en `config/config.yaml` las rutas de los archivos de entrada y de salida. Pueden usarse tanto rutas absolutas como rutas relativas al archivo `snakefile`. Dependiendo de los archivos de entrada, pueden seleccionarse dos modos:
-
-- **Con rescate**: establecer `pipeline_mode: "rescue"` y proporcionar `multifasta` y `snp_table` en `config/config.yaml`.
-- **Sin rescate**: establecer `pipeline_mode: "no-rescue"` y proporcionar `annof_dir` (directorio con archivos `.annoF`) en `config/config.yaml`.
-
-### 3. Ejecutar `snakemake`
-
-Ejecutar desde el directorio parental, el que incluye el archivo `snakefile`:
-
-```shell
-snakemake --use-conda --cores <cores>
+usher_pipeline/
+├── pipeline.py            # the pipeline: runs every step in order
+├── config.toml            # settings: input files, output paths, threads
+├── setup.sh               # installs the software environment
+├── data/
+│   ├── MTB_ancestor_reference.fasta   # reference genome (MTB ancestor)
+│   └── R00000039_repregions.bed       # regions of the genome to mask
+├── scripts/               # scripts called by the pipeline
+└── envs/                  # exact software versions used by setup.sh
 ```
 
 <br>
 
-## Descripción de la pipeline
+## What you need
 
-### Generación de archivos .diff
+- A Linux server.
+- `conda`. To check, run `conda --version`. If you get `command not found`, see [Installing conda](#installing-conda).
+- About 2 GB of free space in your home directory, for the software environment.
+- Your input files: a **multifasta** and a **SNP table**, both from [`ThePipeline consensus`](https://github.com/Tuberculosis-Genomics-Unit/ThePipeline_v3) (see [Step 3](#step-3--check-your-input-files)).
 
-**UShER** toma como input, entre otros, un archivo `.diff` que resume todas las variantes de cada una de las muestras en la filogenia. Para llegar a este archivo, se pueden seguir 2 procesos distintos, dependiendo de si queremos hacer la filogenia con o sin rescate de variantes.
-
-#### .diff a partir de multifasta - Con rescate
-
-Archivos necesarios:
-
-- Multi-FASTA
-- SNP table
-- Ref FASTA
-- Bed mask (`.bed` con las regiones enmascaradas del genoma) 
-
----
-
-##### Rescate - Paso 1
-
-A partir del multifasta de interés (generado con `ThePipeline_vX consensus`) separamos el archivo Multi-FASTA en FASTAs individuales:
+## Step 1 – Get the code
 
 ```shell
-./split_multifasta.sh <multifasta> <output_dir> 
+# SSH (requires an SSH key registered with GitHub)
+git clone git@github.com:Tuberculosis-Genomics-Unit/usher_pipeline.git
+# or HTTPS
+git clone https://github.com/Tuberculosis-Genomics-Unit/usher_pipeline.git
+
+cd usher_pipeline
 ```
 
-##### Rescate - Paso 2
+All the following commands are run from inside this `usher_pipeline` folder.
 
-Generamos un *pseudoalineamiento* de la referencia contra nuestro *pseudogenoma* con las variantes incluidas. Además de los Multi-FASTA generados en el paso anterior para cada muestra, utilizamos la SNP table (generada con `ThePipeline_vX consensus`).
+## Step 2 – Install the software environment
 
-El script toma la referencia, el FASTA individual y la SNP table y sustituye las posiciones de la referencia por el nucleótido correspondiente en el FASTA individual ya rescatado:
+Only once per user and server:
 
 ```shell
-python align_ref_and_rescued_fasta.py <ref_fasta> <sample_fasta> <snp_table>
-
-# Ejemplo paralelizando con xargs
-ls *.fasta | xargs -I {} -P 10 python align_ref_and_rescued_fasta.py /data/Databases/MTB_ancestor/MTB_ancestor_reference.fasta {} SNP_table.txt
+bash setup.sh
 ```
 
-##### Rescate - Paso 3
+This shouldn't take long. It installs UShER, R, taxonium, jq and everything else the pipeline needs into your own environment at `~/.conda/envs/usher-env`. The installed versions are exactly the same on every server. Each user gets their own copy, even when `conda` is a shared installation on the server.
 
-A partir de cada uno de los *pseudoalineamientos* generados en el paso anterior se genera un archivo `.vcf` usando la herramienta `faToVcf` (incluida con `UShER`):
+Running `bash setup.sh` again deletes the environment and installs it again from scratch.
+
+## Step 3 – Check your input files
+
+| File | Where it comes from |
+|---|---|
+| Multifasta | [`ThePipeline consensus`](https://github.com/Tuberculosis-Genomics-Unit/ThePipeline_v3) |
+| SNP table | [`ThePipeline consensus`](https://github.com/Tuberculosis-Genomics-Unit/ThePipeline_v3) |
+| Reference | Already in `data/` |
+| Mask (`.bed`) | Already in `data/` |
+
+## Step 4 – Set parameters
+
+### In `config.toml`
+
+Open `config.toml` in any text editor. Normally you only change three lines: your two input files and the output folder.
+
+```toml
+[input]
+multifasta = "data/aln.fasta"                       # <- your multifasta
+snp_table = "data/snp_table.txt"                    # <- your SNP table
+
+[data]
+ref_fasta = "data/MTB_ancestor_reference.fasta"     # already provided, don't change
+bed_mask = "data/R00000039_repregions.bed"          # already provided, don't change
+
+[output]
+dir = "output"                                      # <- folder where all results go
+keep_intermediates = false                          # true = keep the per-sample files
+
+[mapping]
+enabled = false                                     # true = also make the mutation table
+
+[resources]
+threads = 8                                         # CPU cores to use
+```
+
+You only choose the output **folder**. The file names inside it are always the same (see [Step 6](#step-6--results)). The folder is created if it doesn't exist. If it already holds results from an earlier run, they are overwritten.
+
+Rules for paths:
+
+- You can use **absolute paths** (`/data/myproject/aln.fasta`) or **relative paths** (`data/aln.fasta`). Relative paths are read from the `usher_pipeline` folder, wherever you run the command from.
+- The output folder path **must not contain dots** (for example `/data/run.2024/` will fail), and must not start with `./`. The scripts in `scripts/` read the sample name by cutting the path at the first dot.
+
+### On the command line (without editing `config.toml`)
+
+Some settings can be given on the command line. They take priority over `config.toml`:
 
 ```shell
-ls *_aligned.fasta | cut -f 1 -d '.' | xargs -I {} faToVcf {}\.fasta {}\.vcf
+python pipeline.py \
+    --multifasta aln.fasta \
+    --snp-table snp_table.txt \
+    -o results \
+    --threads 4 \
+    --mapping
 ```
 
-##### Rescate - Paso 4
+| Option | What it does |
+|---|---|
+| `--multifasta FILE` | Multifasta to use |
+| `--snp-table FILE` | SNP table to use |
+| `-o FOLDER`, `--output FOLDER` | Folder where all results go |
+| `--threads N` | Number of CPU cores |
+| `--mapping` | Also make the mutation table |
+| `--keep-intermediates` | Keep the per-sample files (`vcf/`, `diff/`) instead of deleting them |
+| `another_config.toml` | Use a different config file instead of `config.toml` |
 
-Se convierten los archivos `.vcf` en `.diff`, que contienen las variantes del `.vcf` pero manteniendo solo la información de la posición y el cambio:
+Run `python pipeline.py --help` to see all options.
+
+Give each dataset its own output folder (`-o`). Running twice with the same folder overwrites the first run's results.
+
+## Step 5 – Run the pipeline
 
 ```shell
-python vcf_to_diff.py -v <vcf> -d <vcf_dir> -smf <bed_mask>
-
-# Ejemplo paralelizando con xargs
-ls *.vcf | xargs -I {} -P 10 python vcf_to_diff.py -v {} -d diffs/ -smf /nas01/Fran/UCSC/cryptic_tb_callable_mask/R00000039_repregions.bed
+conda activate ~/.conda/envs/usher-env
+python pipeline.py
 ```
 
-##### Rescate - Paso 5
+The pipeline prints its progress:
 
-Se concatenan los `.diff` en un único archivo:
+```
+[1/4] Splitting multifasta (250 samples)
+[2/4] Building per-sample .diff files (8 parallel jobs)
+[3/4] Merging .diff files
+[4/4] Building tree with usher-sampled
+Done. Results in /home/<you>/usher_pipeline/output
+```
+
+With the mutation table turned on (`--mapping`), there is a fifth step, `[5/5] Mapping mutations to tree nodes`.
+
+### Long runs: keep it running after you log out
 
 ```shell
-cat *.diff > final_concatenated.diff
+nohup python pipeline.py > pipeline.log 2>&1 &
 ```
 
-<br>
+## Step 6 – Results
 
-#### .diff a partir de .annoF - Sin rescate
+Everything is inside the output folder (`output/` by default), always with these names:
 
-Archivos necesarios:
+```
+output/
+├── usher_tree.nwk
+├── usher_tree.pb
+├── usher_mapped_mutations.tsv
+├── final.diff
+├── usher_output/
+├── vcf/          (only with keep_intermediates = true)
+└── diff/         (only with keep_intermediates = true)
+```
 
-- `.annoF` de cada muestra
-- Ref FASTA
+| File | What it is |
+|---|---|
+| `usher_tree.nwk` | **The final tree** in Newick format. Open it with FigTree, iTOL, R (`ape`), etc. |
+| `usher_tree.pb` | The same tree in UShER's format, with the mutations on every branch. Used by UShER tools and taxonium. |
+| `usher_mapped_mutations.tsv` | **The mutation table** (only with `--mapping` or `[mapping] enabled = true`). See below. |
+| `final.diff` | Variants of all samples, in the format UShER reads. |
+| `usher_output/` | Extra files written by UShER (for example `placement_stats.tsv`, with how confidently each sample was placed). |
+| `vcf/`, `diff/` | One file per sample from the intermediate steps, plus one log file per sample in `diff/`. Deleted at the end unless `keep_intermediates = true` (or `--keep-intermediates`). |
 
----
+> [!WARNING]
+> Just in case you need to use it: `usher_tree.pb` contains an extra sample called `ref`. It is a "template", used by UShER to build the tree, not one of your samples. The pipeline removes it from `usher_tree.nwk` and from `usher_mapped_mutations.tsv` to keep everything clean, but not from `usher_tree.pb`.
 
-##### Sin rescate - Paso 1
+### The mutation table
 
-Para cada uno de los `.annoF`, se genera un alineamiento de la referencia contra un *pseudogenoma* de la muestra, obtenido al copiar la escuencia de referencia y modificar los nucleótidos que aparecen como variantes en cada `.annoF`:
+Tab-separated, one row per sample and per internal node of the tree:
+
+```
+Sample_or_node	Mutations
+S3	A1315C,C1926A,T4352A
+node_8	T630A,T7381A
+S1	T1164A,C1640T
+```
+
+- Each row lists the mutations on the **branch leading to that node**, not all the mutations accumulated from the root.
+- Mutations are written as `<reference base><position><new base>`, for example `A1315C`.
+- The names of internal nodes (`node_8`, …) are the same as in `usher_tree.nwk`, so the table can be joined to the tree.
+
+## Troubleshooting
+
+| Message | What to do |
+|---|---|
+| `conda: command not found` | conda is not installed or not loaded. See [Installing conda](#installing-conda). |
+| `CondaError: Run 'conda init' before 'conda activate'` | Run `conda init bash`, then close and reopen the terminal. |
+| `FileNotFoundError: ... aln.fasta` (or another input) | A path in `config.toml` is wrong. Check it with `ls <path>`. Remember that relative paths are read from the `usher_pipeline` folder. |
+| `FileNotFoundError: 'faToVcf'`, `'usher-sampled'` or `'Rscript'` | The environment is not active. Run `conda activate ~/.conda/envs/usher-env`. |
+| `Couldn't open ..._aligned.fasta` | A sample name or the output path contains a dot, or the path starts with `./`. Rename it; see the path rules in [Step 4](#step-4--set-parameters). The failed run may also leave stray `*_aligned.fasta` files in the folder above the dotted one; delete them. |
+| `IndexError: list index out of range` | The multifasta has sequences split over several lines. Each sequence must be on a single line. |
+
+### Installing conda
+
+If the server has no `conda`, install Miniforge in your home directory (no admin rights needed):
 
 ```shell
-python individual_multifasta.py <ref> <annoF>
-
-# Ejemplo paralelizando con xargs
-ls *annoF | xargs -I {} -P 10 python individual_multifasta.py /data/Databases/MTB_ancestor/MTB_ancestor_reference.fasta {}
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
 ```
 
-##### Sin rescate - Paso 2
-
-A partir de los archivos generados en el paso anterior, se obtienen los archivos en formato `.vcf` usando la herramienta `faToVcf`:
-
-```shell
-ls *_and_ref_multifasta.fas | cut -f 1 -d '.' | xargs -I {} -P 5 faToVcf {}\.fas {}\.vcf
-```
-
-##### Sin rescate - Paso 3
-
-A partir de los `.vcf` se generan los `.diff`:
-
-```shell
-python vcf_to_diff.py -v <vcf> -d <vcf_dir> -smf <bed_mask>
-
-# Ejemplo paralelizando con xargs
-ls *.vcf | xargs -I {} -P 10 python vcf_to_diff.py -v {} -d diffs/ -smf /nas01/Fran/UCSC/cryptic_tb_callable_mask/R00000039_repregions.bed
-```
-
-##### Sin rescate - Paso 4
-
-Se concatenan los `.diff` en un único archivo:
-
-```shell
-cat *.diff > final_concatenated.diff
-```
-
-<br>
-
-### Reconstrucción de filogenia usando UShER
-
-Tras obtener el archivo `.diff` con todas las muestras concatenadas se sigue el mismo proceso, con y sin rescate:
-
-#### UShER - Paso 1
-
-Es necesario crear un *mock tree* y un *mock diff*. Estos archivos se anotarán con la referencia, actuando como una base/plantilla sobre la que `UShER` añadirá el resto de muestras:
-
-```shell
-echo "();" > base_tree.nwk
-echo ">ref" > ref.diff
-```
-
-El árbol *plantilla* se convierte luego a formato `.pb` (Protobuf), más eficiente:
-
-```shell
-usher-sampled -t base_tree.nwk --diff ref.diff --ref /data/Databases/MTB_ancestor/MTB_ancestor_reference.fasta -o ref.pb
-```
-
-#### UShER - Paso 2
-
-`UShER` añadirá sobre la base `ref.pb` el resto de muestras, incluidas en el `.diff` concatenado:
-
-```shell
-usher-sampled -i ref.pb --diff final_concatenated.diff --ref <ref_fasta> -o final_tree.pb -u -d usher_output/ -T 10
-```
-
-En el directorio `-d` obtendremos la filogenia final en formato Newick: `uncondensed-final-tree.nh`.
-
-> [!NOTE]  
-> Ejecutando `snakemake` el árbol final tendrá el nombre indicado en `config/config.yaml`.
+Accept the defaults, answer `yes` when it asks to initialise conda, then close and reopen the terminal.

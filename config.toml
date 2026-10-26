@@ -1,0 +1,24 @@
+# Relative paths are resolved from the directory containing pipeline.py.
+
+[input]
+multifasta = "data/aln.fasta"
+snp_table = "data/snp_table.txt"
+
+[data]
+ref_fasta = "data/MTB_ancestor_reference.fasta"
+bed_mask = "data/R00000039_repregions.bed"
+
+[output]
+# All results go here: final.diff, usher_tree.pb, usher_tree.nwk, usher_mapped_mutations.tsv and usher_output/.
+dir = "output"
+
+# Keep the per-sample vcf/ and diff/ folders (deleted once final.diff is built otherwise).
+keep_intermediates = false
+
+[mapping]
+# Table of mutations per tree node and sample (usher_to_taxonium + R script).
+enabled = false
+
+[resources]
+# Parallel per-sample jobs and usher-sampled threads.
+threads = 8
