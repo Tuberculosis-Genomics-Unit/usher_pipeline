@@ -15,7 +15,9 @@ usher_pipeline/
 ├── setup.sh               # installs the software environment
 ├── data/
 │   ├── MTB_ancestor_reference.fasta   # reference genome (MTB ancestor)
-│   └── R00000039_repregions.bed       # regions of the genome to mask
+│   ├── R00000039_repregions.bed       # regions of the genome to mask
+│   ├── example_aln.fasta              # toy multifasta (12 samples) for testing
+│   └── example_snp_table.txt          # toy SNP table matching example_aln.fasta
 ├── scripts/               # scripts called by the pipeline
 └── envs/                  # exact software versions used by setup.sh
 ```
@@ -62,6 +64,11 @@ Running `bash setup.sh` again deletes the environment and installs it again from
 | SNP table | [`ThePipeline consensus`](https://github.com/Tuberculosis-Genomics-Unit/ThePipeline_v3) |
 | Reference | Already in `data/` |
 | Mask (`.bed`) | Already in `data/` |
+
+The two input files must match:
+
+- **SNP table**: tab-separated, with a header line. The first column is the genome position. Each row is one SNP position.
+- **Multifasta**: one sequence per sample, each on a **single line**, with one base per row of the SNP table, in the same order. Sample names must not contain dots.
 
 ## Step 4 – Set parameters
 

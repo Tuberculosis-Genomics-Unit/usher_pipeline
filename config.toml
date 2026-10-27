@@ -1,8 +1,8 @@
 # Relative paths are resolved from the directory containing pipeline.py.
 
 [input]
-multifasta = "data/aln.fasta"
-snp_table = "data/snp_table.txt"
+multifasta = "data/example_aln.fasta"
+snp_table = "data/example_snp_table.txt"
 
 [data]
 ref_fasta = "data/MTB_ancestor_reference.fasta"
